@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.ToggleButton?>
+<?import javafx.scene.control.ToggleGroup?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Priority?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="MainController" prefHeight="720.0" prefWidth="1200.0">
+    <top>
+        <VBox spacing="6.0">
+            <padding>
+                <Insets top="10.0" right="10.0" bottom="6.0" left="10.0"/>
+            </padding>
+            <Label text="Guess Market" style="-fx-font-size: 18px; -fx-font-weight: bold;"
+                   maxWidth="Infinity" alignment="CENTER"/>
+            <HBox spacing="10.0" alignment="CENTER_LEFT">
+                <Button fx:id="loadButton" text="Load File" onAction="#onLoadClick"/>
+                <ProgressBar fx:id="loadProgress" prefWidth="180.0" progress="0" visible="false"/>
+                <Label fx:id="loadedPathLabel" text="No file loaded" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+            </HBox>
+        </VBox>
+    </top>
+    <center>
+        <TabPane fx:id="mainTabs" tabClosingPolicy="UNAVAILABLE">
+            <tabs>
+                <Tab text="Events">
+                    <content>
+                        <SplitPane dividerPositions="0.42">
+                            <items>
+                                <VBox spacing="8.0">
+                                    <padding>
+                                        <Insets top="8.0" right="8.0" bottom="8.0" left="8.0"/>
+                                    </padding>
+                                    <Label text="Events" style="-fx-font-weight: bold;"/>
+                                    <HBox spacing="6.0" alignment="CENTER_LEFT">
+                                        <Label text="Method"/>
+                                        <fx:define>
+                                            <ToggleGroup fx:id="methodFilterGroup"/>
+                                            <ToggleGroup fx:id="statusFilterGroup"/>
+                                            <ToggleGroup fx:id="commissionFilterGroup"/>
+                                        </fx:define>
+                                        <ToggleButton text="All" fx:id="methodAll" toggleGroup="$methodFilterGroup" selected="true" onAction="#onFilterChanged"/>
+                                        <ToggleButton text="LMSR" fx:id="methodLmsr" toggleGroup="$methodFilterGroup" onAction="#onFilterChanged"/>
+                                        <ToggleButton text="Order Book" fx:id="methodOb" toggleGroup="$methodFilterGroup" onAction="#onFilterChanged"/>
+                                    </HBox>
+                                    <HBox spacing="6.0" alignment="CENTER_LEFT">
+                                        <Label text="Status"/>
+                                        <ToggleButton text="All" fx:id="statusAll" toggleGroup="$statusFilterGroup" selected="true" onAction="#onFilterChanged"/>
+                                        <ToggleButton text="Not started" fx:id="statusNotStarted" toggleGroup="$statusFilterGroup" onAction="#onFilterChanged"/>
+                                        <ToggleButton text="Active" fx:id="statusActive" toggleGroup="$statusFilterGroup" onAction="#onFilterChanged"/>
+                                        <ToggleButton text="Closed" fx:id="statusClosed" toggleGroup="$statusFilterGroup" onAction="#onFilterChanged"/>
+                                    </HBox>
+                                    <HBox spacing="6.0" alignment="CENTER_LEFT">
+                                        <Label text="Commission"/>
+                                        <ToggleButton text="All" fx:id="commissionAll" toggleGroup="$commissionFilterGroup" selected="true" onAction="#onFilterChanged"/>
+                                        <ToggleButton text="on-purchase" fx:id="commissionPurchase" toggleGroup="$commissionFilterGroup" onAction="#onFilterChanged"/>
+                                        <ToggleButton text="on-close" fx:id="commissionClose" toggleGroup="$commissionFilterGroup" onAction="#onFilterChanged"/>
+                                    </HBox>
+                                    <TableView fx:id="eventsTable" VBox.vgrow="ALWAYS">
+                                        <columnResizePolicy>
+                                            <TableView fx:constant="CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN"/>
+                                        </columnResizePolicy>
+                                        <columns>
+                                            <TableColumn fx:id="idColumn" text="ID" prefWidth="40.0"/>
+                                            <TableColumn fx:id="nameColumn" text="Name" prefWidth="140.0"/>
+                                            <TableColumn fx:id="methodColumn" text="Type" prefWidth="90.0"/>
+                                            <TableColumn fx:id="statusColumn" text="Status" prefWidth="90.0"/>
+                                            <TableColumn fx:id="commissionColumn" text="Comm %" prefWidth="70.0"/>
+                                            <TableColumn fx:id="commissionTypeColumn" text="Comm type" prefWidth="100.0"/>
+                                            <TableColumn fx:id="accountColumn" text="Account" prefWidth="80.0"/>
+                                        </columns>
+                                    </TableView>
+                                </VBox>
+                                <ScrollPane fitToWidth="true" fitToHeight="true">
+                                    <content>
+                                        <VBox spacing="10.0">
+                                            <padding>
+                                                <Insets top="8.0" right="8.0" bottom="8.0" left="8.0"/>
+                                            </padding>
+                                            <Label text="Event details" style="-fx-font-weight: bold;"/>
+                                            <Label fx:id="eventSummaryLabel" wrapText="true" text="(select an event)"/>
+                                            <HBox spacing="10.0" VBox.vgrow="ALWAYS">
+                                                <VBox spacing="6.0" HBox.hgrow="ALWAYS" style="-fx-border-color: #cccccc; -fx-padding: 8;">
+                                                    <Label text="Option 1" style="-fx-font-weight: bold;"/>
+                                                    <TextArea fx:id="option1Area" wrapText="true" editable="false" prefRowCount="12"/>
+                                                </VBox>
+                                                <VBox spacing="6.0" HBox.hgrow="ALWAYS" style="-fx-border-color: #cccccc; -fx-padding: 8;">
+                                                    <Label text="Option 2" style="-fx-font-weight: bold;"/>
+                                                    <TextArea fx:id="option2Area" wrapText="true" editable="false" prefRowCount="12"/>
+                                                </VBox>
+                                            </HBox>
+                                            <Label text="Participants" style="-fx-font-weight: bold;"/>
+                                            <Label fx:id="participationLabel" wrapText="true" text="(select an event)"/>
+                                            <Label text="Trade from the Users tab after selecting a user." wrapText="true"/>
+                                        </VBox>
+                                    </content>
+                                </ScrollPane>
+                            </items>
+                        </SplitPane>
+                    </content>
+                </Tab>
+                <Tab text="Users">
+                    <content>
+                        <SplitPane dividerPositions="0.32">
+                            <items>
+                                <VBox spacing="8.0">
+                                    <padding>
+                                        <Insets top="8.0" right="8.0" bottom="8.0" left="8.0"/>
+                                    </padding>
+                                    <Label text="Users" style="-fx-font-weight: bold;"/>
+                                    <TableView fx:id="usersTable" VBox.vgrow="ALWAYS">
+                                        <columnResizePolicy>
+                                            <TableView fx:constant="CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN"/>
+                                        </columnResizePolicy>
+                                        <columns>
+                                            <TableColumn fx:id="userNameColumn" text="Name" prefWidth="120.0"/>
+                                            <TableColumn fx:id="userCashColumn" text="Cash" prefWidth="90.0"/>
+                                            <TableColumn fx:id="userBlockedColumn" text="Blocked" prefWidth="80.0"/>
+                                        </columns>
+                                    </TableView>
+                                </VBox>
+                                <ScrollPane fitToWidth="true">
+                                    <content>
+                                        <VBox spacing="8.0">
+                                            <padding>
+                                                <Insets top="8.0" right="8.0" bottom="8.0" left="8.0"/>
+                                            </padding>
+                                            <Label text="Selected user" style="-fx-font-weight: bold;"/>
+                                            <Label fx:id="userDetailsLabel" wrapText="true" text="(select a user)"/>
+                                            <TableView fx:id="userEventsTable" prefHeight="160.0">
+                                                <columns>
+                                                    <TableColumn fx:id="userEventIdColumn" text="ID" prefWidth="40.0"/>
+                                                    <TableColumn fx:id="userEventNameColumn" text="Event" prefWidth="160.0"/>
+                                                    <TableColumn fx:id="userEventTypeColumn" text="Type" prefWidth="90.0"/>
+                                                    <TableColumn fx:id="userEventRoleColumn" text="Role" prefWidth="160.0"/>
+                                                </columns>
+                                            </TableView>
+                                            <Label fx:id="userEventDetailsLabel" wrapText="true"/>
+                                            <Label text="Act as this user" style="-fx-font-weight: bold;"/>
+                                            <HBox spacing="8.0" alignment="CENTER_LEFT">
+                                                <Label text="Event"/>
+                                                <ComboBox fx:id="tradeEventCombo" prefWidth="280.0"/>
+                                                <Button text="Open event (MM)" onAction="#onOpenClick"/>
+                                                <Button text="Close event (MM)" onAction="#onCloseClick"/>
+                                            </HBox>
+                                            <HBox spacing="8.0" alignment="CENTER_LEFT">
+                                                <Label text="Option"/>
+                                                <ComboBox fx:id="optionCombo" prefWidth="160.0"/>
+                                                <Label text="Amount"/>
+                                                <TextField fx:id="amountField" prefWidth="70.0" promptText="qty"/>
+                                                <Button text="Buy (LMSR)" onAction="#onBuyClick"/>
+                                            </HBox>
+                                            <HBox spacing="8.0" alignment="CENTER_LEFT">
+                                                <Label text="Side"/>
+                                                <ComboBox fx:id="sideCombo" prefWidth="90.0"/>
+                                                <Label text="Price"/>
+                                                <TextField fx:id="priceField" prefWidth="70.0" promptText="0.40"/>
+                                                <Button text="Place order (OB)" onAction="#onPlaceOrderClick"/>
+                                            </HBox>
+                                            <HBox spacing="8.0" alignment="CENTER_LEFT">
+                                                <Label text="Winning option"/>
+                                                <ComboBox fx:id="winnerCombo" prefWidth="180.0"/>
+                                            </HBox>
+                                            <Label fx:id="tradeResultLabel" wrapText="true"/>
+                                        </VBox>
+                                    </content>
+                                </ScrollPane>
+                            </items>
+                        </SplitPane>
+                    </content>
+                </Tab>
+            </tabs>
+        </TabPane>
+    </center>
+</BorderPane>

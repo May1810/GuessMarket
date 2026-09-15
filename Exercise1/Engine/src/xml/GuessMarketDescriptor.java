@@ -19,4 +19,14 @@ public class GuessMarketDescriptor {
         return events;
     }
 
+    @XmlElementWrapper(name = "GM-users")
+    @XmlElement(name = "GM-user")
+    protected List<GMUser> users;
+
+    // אל תשכחי להוסיף Getter:
+    public List<GMUser> getUsers() {
+        return users;
+    }
+
+
 }

@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" build-on-make="true" name="UI-FX:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/UI_FX_jar</output-path>
+    <root id="archive" name="UI-FX.jar">
+      <element id="module-output" name="UI-FX" />
+    </root>
+  </artifact>
+</component>

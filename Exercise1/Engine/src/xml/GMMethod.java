@@ -10,5 +10,9 @@ public class GMMethod {
     @XmlElement(name = "GM-LMSR")
     private GMLmsr lmsr;
 
+    @XmlElement(name = "GM-order-book")
+    private GMOrderBook orderBook;
+
     public GMLmsr getLmsr() { return lmsr; }
+    public GMOrderBook getOrderBook() { return orderBook; }
 }

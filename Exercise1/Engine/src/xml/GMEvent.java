@@ -19,7 +19,7 @@ public class GMEvent {
     @XmlElement(name = "description")
     private String description;
 
-    @XmlElement(name = "comision")
+    @XmlElement(name = "commission")
     private Commission commission;
 
     @XmlElementWrapper(name = "GM-options")

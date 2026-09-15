@@ -14,6 +14,10 @@ public class EventAccount{
         return balance;
     }
 
+    public void setBalance(double balance) {
+        this.balance = balance;
+    }
+
     public double getTotalCommissionCollected() {
         return totalCommissionCollected;
     }
@@ -21,6 +25,12 @@ public class EventAccount{
     public void addCommission(double amount){
         if(amount > 0){
             this.balance += amount;
+            this.totalCommissionCollected += amount;
+        }
+    }
+
+    public void recordCommissionOnly(double amount) {
+        if (amount > 0) {
             this.totalCommissionCollected += amount;
         }
     }
