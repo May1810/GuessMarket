@@ -1,130 +1,44 @@
-# Guess Market – Exercise 1 (Console)
+# 📈 GuessMarket - Real-Time Prediction Market Engine
 
-**Fill in before submitting, then copy this text into Word or PDF (not Notepad).**
+A robust Client-Server prediction market platform simulating real-world event trading (similar to Polymarket). Users can trade shares on binary outcomes, with prices dynamically determined by advanced mathematical pricing mechanisms and matching engines.
 
-## Submitters
+## 🚀 Core Architecture & Features
 
-- **Name:** ______________________________
-- **ID:** ______________________________
-- **Email:** ______________________________
-- **Partner (if any):** name / ID / email
-- **GitHub:** https://github.com/__________/GuessMarket
+- **Centralized Trading Engine (`GuessMarketEngine`):** A shared, thread-safe server state managing real-time order matching, user balances, and event lifecycle.
+- **Dual Market Mechanisms:**
+  - **LMSR (Logarithmic Market Scoring Rule):** An Automated Market Maker (AMM) where prices increase algorithmically as share demand rises. Supported by Market Maker initial subsidies.
+  - **Order Book:** A traditional Bid/Ask matching engine for peer-to-peer trading. Includes an **auto-minting** feature that issues new share pairs when opposite orders cross the base value.
+- **Client-Server Communication:** The JavaFX client communicates seamlessly with the Tomcat server via Java's native `java.net.http.HttpClient` through REST-like endpoints (`/login`, `/upload`, `/events`, `/users`, `/open`, `/buy`, `/order`, `/close`, `/topup`).
+- **Dynamic State Initialization:** Market states, liquidity parameters, and user profiles are strictly parsed and loaded into the engine via XML.
 
----
+## 🛠️ Tech Stack
 
-## How to run
+- **Backend / Server:** Java, Apache Tomcat (Servlets API)
+- **Client UI:** JavaFX 25 (OpenJFX) + FXML
+- **Data Serialization:** Gson (JSON payload handling), JAXB (XML parsing)
 
-1. Extract the zip.
-2. Double-click `run.bat` (or run it from the folder that contains the jars).
-3. The console menu appears. Use command **1** to load an XML file (full path, including files with spaces).
+## 🔄 Trading Workflow
 
-The program needs Java 8+ and the JAXB libraries that are listed in the batch file / `lib` folder.
+1. **Authentication:** Users connect to the server via the client login.
+2. **Initialization:** Market Makers load an XML configuration containing new events (default status: *Not Started*).
+3. **Market Opening:** The Market Maker activates the event, funding the initial algorithmic subsidy or base liquidity from their cash balance.
+4. **Live Trading:** Users place buy/sell orders (Order Book) or directly purchase shares from the AMM (LMSR).
+5. **Settlement:** The Market Maker closes the event and declares the winning outcome. The engine automatically distributes payouts to winning shareholders and allocates trading commissions to the Market Maker.
 
----
+## 💻 Local Development & Setup
 
-## What the system does
+This project is configured for execution via IntelliJ IDEA. The server must be initialized before the client to avoid connection timeouts.
 
-Guess Market is a prediction-market console app.
+### 1. Server Setup (Tomcat)
+- Configure a local Tomcat Server run configuration in IntelliJ.
+- **Deployment:** Add the `Server:war exploded` artifact.
+- **Application context:** `/GuessMarket`
+- **Port:** `8080`
+- Run the server.
 
-- The **Engine** module holds all market logic (XML load, LMSR pricing, accounts, trades, close).
-- The **UI** module is the only place with `main`, `Scanner`, and `System.out`. It prints menus, reads input, and calls the engine.
-
-There is one user (the checker). Each event has exactly two options, its own MM account, and starts **Active** until it is closed.
-
-### Console commands
-
-1. Load XML file  
-2. Show events  
-3. Show event trading state  
-4. Participate (buy shares)  
-5. Close event  
-6. Exit  
-
-Lists are numbered from **1**. The user never types option names. Invalid input does not crash the program.
-
----
-
-## Design choices
-
-- **Two IntelliJ modules:** Engine (passive) and UI (active), as required.
-- **Engine API is an interface** (`IGuessMarketEngine`) so later exercises can reuse the same engine without changing the UI contract much.
-- **DTOs only** are returned to the UI. The UI never touches `Event` / `Option` model objects.
-- **XML** is read with JAXB. Tag names follow the course schema (`Guess-Market`, `comision`, `GM-LMSR`, etc.).
-- **Safe load:** a new event list is built in a temporary list. Only if the whole file is valid is it assigned. A bad file does not wipe a previous good load.
-- **LMSR cost:** `C(q) = b * ln(Σ exp(q_i / b))`. Buy price = `C(after) − C(before)`.
-- **Subsidy on load:** each event account starts at `C(0,0) = b * ln(2)` for two options.
-- **Option probability:** `P_i = exp(q_i / b) / Σ exp(q_j / b)`, shown with two decimals in the UI.
-- **On-purchase commission:** percent of the LMSR base price, added to the event account.
-- **On-close commission:** percent of the winners’ payout (`$1 × winning shares`), then winners are paid from the account. The remaining balance is **not** reset and may be negative.
-- **Trade history** is stored newest-first. Price in history is the LMSR base price (without commission).
-- **Buy result** is returned as `BuyResultDTO` (base, commission, total) so the UI can print the receipt.
-
----
-
-## Main classes
-
-### UI module
-
-| Class | Role |
-|--------|------|
-| `Main` | Program entry. Menu loop, input validation, all printing. Calls only `IGuessMarketEngine`. |
-
-### Engine – API and logic
-
-| Class | Role |
-|--------|------|
-| `IGuessMarketEngine` | Public engine operations: load XML, list events, buy, close. |
-| `GuessMarketEngine` | Implementation: JAXB load, validations, LMSR math, commission, DTO mapping. |
-
-### Engine – models (internal)
-
-| Class | Role |
-|--------|------|
-| `Event` | One market: options, LMSR `b`, commission, active/closed, winner, history, account. |
-| `Option` | Option name and number of shares bought. |
-| `EventAccount` | Event (MM) balance and total commission collected. |
-| `Trade` | One buy: option, quantity, base price paid. |
-
-### Engine – DTOs (sent to UI)
-
-| Class | Role |
-|--------|------|
-| `EventDTO` | Display data for an event (including account, history, winner). |
-| `OptionDTO` | Option name, shares, current probability. |
-| `TradeDTO` | One history row. |
-| `BuyResultDTO` | Receipt after a purchase. |
-
-### Engine – XML (JAXB)
-
-| Class | Role |
-|--------|------|
-| `GuessMarketDescriptor` | Root `Guess-Market`. |
-| `GMEvent` | One `GM-event`. |
-| `Commission` | `comision` value + `type`. |
-| `GMMethod` / `GMLmsr` | Trading method and liquidity `b`. |
-
----
-
-## XML checks (application-wise)
-
-The file is assumed valid against the schema. The engine still checks:
-
-- path exists and ends with `.xml`
-- unique event IDs
-- commission between 0 and 90
-- each event has exactly two options
-
-Errors are returned as clear messages. The UI prints them and continues.
-
----
-
-## Project structure
-
-```
-GuessMarket/
-  Exercise1/Engine/   engine module
-  Exercise1/UI/       console UI module
-  lib/                JAXB jars
-  GM-EX1-schema.xsd
-  single.xml          sample file
-```
+### 2. Client Setup (JavaFX)
+- Create an Application run configuration for the `UI-FX` module.
+- **Main Class:** `FxMain`
+- **VM Options:** Link your local JavaFX SDK (v25) by adding:
+  ```bash
+  --module-path "<path_to_javafx_lib_directory>" --add-modules javafx.controls,javafx.fxml
