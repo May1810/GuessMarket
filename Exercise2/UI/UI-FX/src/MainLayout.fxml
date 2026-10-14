@@ -131,6 +131,7 @@
                                         <columns>
                                             <TableColumn fx:id="userNameColumn" text="Name" prefWidth="120.0"/>
                                             <TableColumn fx:id="userCashColumn" text="Cash" prefWidth="90.0"/>
+                                            <TableColumn fx:id="userMmColumn" text="Market maker" prefWidth="110.0"/>
                                             <TableColumn fx:id="userBlockedColumn" text="Blocked" prefWidth="80.0"/>
                                         </columns>
                                     </TableView>
@@ -141,6 +142,15 @@
                                             <padding>
                                                 <Insets top="8.0" right="8.0" bottom="8.0" left="8.0"/>
                                             </padding>
+                                            <Label text="Your account" style="-fx-font-weight: bold;"/>
+                                            <Label fx:id="myCashLabel" wrapText="true" text="Cash: -"/>
+                                            <HBox spacing="8.0" alignment="CENTER_LEFT">
+                                                <Label text="Top up"/>
+                                                <TextField fx:id="topupField" prefWidth="80.0" promptText="100"/>
+                                                <Button text="Add cash" onAction="#onTopupClick"/>
+                                            </HBox>
+                                            <Label text="Account lines (newest first)" style="-fx-font-weight: bold;"/>
+                                            <TextArea fx:id="ledgerArea" editable="false" wrapText="true" prefRowCount="6"/>
                                             <Label text="Selected user" style="-fx-font-weight: bold;"/>
                                             <Label fx:id="userDetailsLabel" wrapText="true" text="(select a user)"/>
                                             <TableView fx:id="userEventsTable" prefHeight="160.0">
@@ -152,7 +162,7 @@
                                                 </columns>
                                             </TableView>
                                             <Label fx:id="userEventDetailsLabel" wrapText="true"/>
-                                            <Label text="Act as this user" style="-fx-font-weight: bold;"/>
+                                            <Label text="Trade as the logged-in user" style="-fx-font-weight: bold;"/>
                                             <HBox spacing="8.0" alignment="CENTER_LEFT">
                                                 <Label text="Event"/>
                                                 <ComboBox fx:id="tradeEventCombo" prefWidth="280.0"/>

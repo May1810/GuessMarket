@@ -8,13 +8,15 @@ public class UserDTO {
     private final boolean blocked;
     private final List<Integer> mmEventIds;
     private final List<UserEventDTO> participations;
+    private final List<String> ledger;
 
-    public UserDTO(String name, double cash, boolean blocked, List<Integer> mmEventIds, List<UserEventDTO> participations) {
+    public UserDTO(String name, double cash, boolean blocked, List<Integer> mmEventIds, List<UserEventDTO> participations, List<String> ledger) {
         this.name = name;
         this.cash = cash;
         this.blocked = blocked;
         this.mmEventIds = mmEventIds;
         this.participations = participations;
+        this.ledger = ledger;
     }
 
     public String getName() {
@@ -35,5 +37,13 @@ public class UserDTO {
 
     public List<UserEventDTO> getParticipations() {
         return participations;
+    }
+
+    public List<String> getLedger() {
+        return ledger;
+    }
+
+    public boolean isMarketMaker() {
+        return mmEventIds != null && !mmEventIds.isEmpty();
     }
 }

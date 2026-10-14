@@ -4,6 +4,7 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/Exercise1/Engine/Engine.iml" filepath="$PROJECT_DIR$/Exercise1/Engine/Engine.iml" />
       <module fileurl="file://$PROJECT_DIR$/GuessMarket.iml" filepath="$PROJECT_DIR$/GuessMarket.iml" />
+      <module fileurl="file://$PROJECT_DIR$/Exercise3/Server/Server.iml" filepath="$PROJECT_DIR$/Exercise3/Server/Server.iml" />
       <module fileurl="file://$PROJECT_DIR$/Exercise1/UI/UI.iml" filepath="$PROJECT_DIR$/Exercise1/UI/UI.iml" />
       <module fileurl="file://$PROJECT_DIR$/Exercise2/UI/UI-FX/UI-FX.iml" filepath="$PROJECT_DIR$/Exercise2/UI/UI-FX/UI-FX.iml" />
     </modules>

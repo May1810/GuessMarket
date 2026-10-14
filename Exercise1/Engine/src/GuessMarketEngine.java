@@ -24,6 +24,7 @@ import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
 import javax.xml.bind.Unmarshaller;
 import java.io.File;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,6 +34,7 @@ import java.util.Set;
 
 public class GuessMarketEngine implements IGuessMarketEngine {
 
+    private int nextEventId = 1;
     private List<Event> events;
     private List<User> users;
     private long orderSeq;
@@ -46,6 +48,31 @@ public class GuessMarketEngine implements IGuessMarketEngine {
         return Math.round(value * 100.0) / 100.0;
     }
 
+    public void registerUser(String name) {
+        if (findUserOrNull(name) != null) {
+            return;
+        }
+        // אם הוא חדש, מוסיפים אותו לרשימת המשתמשים עם 0 כסף
+        users.add(new User(name.trim(), 0));
+    }
+
+    public void addCash(String userName, double amount) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("Amount must be greater than 0.");
+        }
+        findUser(userName).credit(amount, "Top up");
+    }
+
+    public User findUserOrNull(String name) {
+        String trimmed = name.trim();
+        for (User u : this.users) {
+            if (u.getName().equalsIgnoreCase(trimmed)) {
+                return u;
+            }
+        }
+        return null; // לא מצאנו? מחזירים null בשקט
+    }
+
     private Event findLogicEventById(int eventId) {
         for (Event event : this.events) {
             if (event.getId() == eventId) {
@@ -53,6 +80,16 @@ public class GuessMarketEngine implements IGuessMarketEngine {
             }
         }
         throw new IllegalArgumentException("Event with ID " + eventId + " was not found.");
+    }
+
+    private Event findEventByNameOrNull(String name) {
+        String trimmed = name.trim();
+        for (Event e : this.events) {
+            if (e.getName().equalsIgnoreCase(trimmed)) {
+                return e; // מצאנו אירוע עם אותו שם!
+            }
+        }
+        return null; // לא מצאנו, השם הזה פנוי
     }
 
     private Option findOptionByName(Event event, String optionName) {
@@ -72,10 +109,9 @@ public class GuessMarketEngine implements IGuessMarketEngine {
             throw new IllegalArgumentException("User name is required.");
         }
         String wanted = name.trim();
-        for (User user : users) {
-            if (user.getName().equalsIgnoreCase(wanted)) {
-                return user;
-            }
+        User u = findUserOrNull(wanted);
+        if(u != null){
+            return u;
         }
         throw new IllegalArgumentException("User '" + wanted + "' was not found.");
     }
@@ -181,6 +217,128 @@ public class GuessMarketEngine implements IGuessMarketEngine {
         }
     }
 
+    public int addEventsFromXml(InputStream xml, String uploaderName) {
+        // שלב 0: מוודאים שמי שהעלה את הקובץ קיים במנוע (יזרוק שגיאה אם לא)
+        User uploader = findUser(uploaderName);
+
+        GuessMarketDescriptor descriptor;
+        // שלב 1: פותחים את ה-XML מתוך הזרם של הרשת (InputStream) ולא מקובץ שמור
+        try {
+            JAXBContext jaxbContext = JAXBContext.newInstance(GuessMarketDescriptor.class);
+            Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+            descriptor = (GuessMarketDescriptor) unmarshaller.unmarshal(xml);
+        } catch (JAXBException e) {
+            throw new IllegalArgumentException("Error in the file data-XML: " + e.getMessage());
+        }
+
+        // שלב 2: חוסמים קבצים של תרגיל 2 (שיש בהם תגית משתמשים) או קבצים ללא אירועים
+        if (descriptor.getUsers() != null && !descriptor.getUsers().isEmpty()) {
+            throw new IllegalArgumentException("Schema 3 files must not contain users.");
+        }
+        if (descriptor.getEvents() == null || descriptor.getEvents().isEmpty()) {
+            throw new IllegalArgumentException("The XML file contains no events.");
+        }
+
+        // שלב 3: מכינים כלים לבדיקות ("הכל או כלום")
+        int tempId = this.nextEventId; // לוקחים את המספר הבא הפנוי
+        List<Event> tempEvents = new ArrayList<>(); // רשימה זמנית
+        Set<String> namesInFile = new HashSet<>();  // למניעת כפילויות בקובץ
+
+        // השתמשתי פה ב-getEvents() בדיוק כמו בקוד המקורי שלך
+        for (GMEvent xmlEvent : descriptor.getEvents()) {
+
+            // בדיקת שם (חובה)
+            if (xmlEvent.getName() == null || xmlEvent.getName().trim().isEmpty()) {
+                throw new IllegalArgumentException("Event name is required.");
+            }
+            String trimmedName = xmlEvent.getName().trim();
+
+            // חסימת כפילות בתוך הקובץ עצמו
+            if (!namesInFile.add(trimmedName.toLowerCase())) {
+                throw new IllegalArgumentException("Duplicate event name in file: " + trimmedName);
+            }
+
+            // חסימת כפילות מול אירועים שכבר קיימים בשרת
+            if (findEventByNameOrNull(trimmedName) != null) {
+                throw new IllegalArgumentException("Event name already exists on server: " + trimmedName);
+            }
+
+            // בדיקות תקינות (מתרגיל 1)
+            int commission = xmlEvent.getCommission().getValue();
+            if (commission < 0 || commission > 90) {
+                throw new IllegalArgumentException("Commission must be between 0 and 90.");
+            }
+
+            // קריאת האפשרויות בדיוק כמו אצלך בקוד הישן
+            List<Option> options = new ArrayList<>();
+            for (String optionName : xmlEvent.getOptions()) {
+                options.add(new Option(optionName.trim()));
+            }
+
+            if (options.size() < 2) {
+                throw new IllegalArgumentException("Event must have at least 2 options.");
+            }
+
+            // יצירת האירוע הלוגי - השתמשתי בבנאים המדויקים שלך!
+            Event logicEvent;
+            if (xmlEvent.getMethod().getLmsr() != null) {
+                if (xmlEvent.getMethod().getOrderBook() != null) {
+                    throw new IllegalArgumentException("Event must have exactly one method (LMSR or OrderBook).");
+                }
+                int b = xmlEvent.getMethod().getLmsr().getB();
+                if (b <= 0) throw new IllegalArgumentException("LMSR 'b' value must be > 0.");
+
+                logicEvent = new Event(
+                        tempId, // המונה החדש שלנו במקום xmlEvent.getId()
+                        trimmedName,
+                        commission,
+                        xmlEvent.getDescription(),
+                        xmlEvent.getCommission().getType(),
+                        b,
+                        options,
+                        false // חשוב: מעבירים false כדי שייווצר כסגור (Not started) ולא נצטרך ex2
+                );
+            } else {
+                // העתקתי את זה בדיוק כמו אצלך עם הקידומת xml.GMOrderBook
+                xml.GMOrderBook ob = xmlEvent.getMethod().getOrderBook();
+                if (ob == null) throw new IllegalArgumentException("Event must have a method.");
+                if (ob.getD() <= 0 || ob.getInitial() < 0) {
+                    throw new IllegalArgumentException("OrderBook 'd' must be > 0 and 'initial' >= 0.");
+                }
+
+                logicEvent = new Event(
+                        tempId, // המונה החדש שלנו במקום xmlEvent.getId()
+                        trimmedName,
+                        options,
+                        ob.isAllowMint(),
+                        ob.getInitial(),
+                        ob.getD(),
+                        commission,
+                        xmlEvent.getDescription(),
+                        xmlEvent.getCommission().getType()
+                );
+            }
+
+            // האירוע מושלם! מוסיפים אותו לרשימה הזמנית ומקדמים את ה-ID
+            tempEvents.add(logicEvent);
+            tempId++;
+        }
+
+        // שלב 5: אם הגענו עד לכאן (אף שגיאה לא קפצה) - הקובץ מושלם לגמרי!
+        // עכשיו באמת משנים את השרת:
+        this.events.addAll(tempEvents); // מוסיפים ולא דורסים (this.events = tempEvents)!
+        this.nextEventId = tempId; // מעדכנים את המונה האמיתי
+
+        for (Event added : tempEvents) {
+            added.setMarketMakerName(uploader.getName());
+            // שומרים את האירוע תחת המשתמש שהעלה אותו
+            uploader.getMmEventIds().add(added.getId());
+        }
+
+        // מחזירים לסרבלט את כמות האירועים שהתווספו
+        return tempEvents.size();
+    }
+
     @Override
     public boolean hasLoadedData() {
         return events != null && !events.isEmpty();
@@ -265,7 +423,7 @@ public class GuessMarketEngine implements IGuessMarketEngine {
         double total = r2(basePrice + commission);
         user.requireFunds(total);
 
-        user.debit(total);
+        user.debit(total, "LMSR buy");
         selectedOption.setShareBought(selectedOption.getShareBought() + amount);
         currentEvent.getAccount().addInvestment(basePrice);
         payCommissionToMm(currentEvent, commission);
@@ -292,12 +450,12 @@ public class GuessMarketEngine implements IGuessMarketEngine {
         if (event.isLmsr()) {
             double subsidy = r2(event.subsidyAmount());
             user.requireFunds(subsidy);
-            user.debit(subsidy);
+            user.debit(subsidy, "Opened LMSR event");
             event.getAccount().addInvestment(subsidy);
         } else {
             double cost = event.getInitialInvestment();
             user.requireFunds(cost);
-            user.debit(cost);
+            user.debit(cost, "Opened order book");
             event.getAccount().addInvestment(cost);
             int pairs = event.getD() <= 0 ? 0 : (int) Math.round(event.getInitialInvestment() / event.getD());
             UserPosition pos = user.position(eventId);
@@ -339,7 +497,7 @@ public class GuessMarketEngine implements IGuessMarketEngine {
             double net = r2(gross - closeCommission);
             if (gross > 0) {
                 event.getAccount().deductFunds(gross);
-                user.credit(net);
+                user.credit(net, "Winning payout");
                 payCommissionToMm(event, closeCommission);
                 pos.addCommission(closeCommission);
             }
@@ -349,9 +507,9 @@ public class GuessMarketEngine implements IGuessMarketEngine {
         double leftover = event.getAccount().getBalance();
         if (leftover > 0) {
             event.getAccount().deductFunds(leftover);
-            mm.credit(leftover);
+            mm.credit(leftover, "Leftover event pot");
         } else if (leftover < 0) {
-            mm.debit(-leftover);
+            mm.debit(-leftover, "Covered event shortfall");
             event.getAccount().setBalance(0);
         }
 
@@ -479,7 +637,7 @@ public class GuessMarketEngine implements IGuessMarketEngine {
             buy.setReservedCash(0);
         }
 
-        seller.credit(cost);
+        seller.credit(cost, "Sold shares");
         UserPosition sellerPos = seller.position(event.getId());
         sellerPos.removeReservedShares(option.getOptionName(), qty);
         sellerPos.removeShares(option.getOptionName(), qty);
@@ -491,7 +649,7 @@ public class GuessMarketEngine implements IGuessMarketEngine {
         double commission = r2(calculateCommissionAmount(event, cost, "on-purchase"));
         if (commission > 0) {
             buyer.requireFunds(commission);
-            buyer.debit(commission);
+            buyer.debit(commission, "Purchase commission");
             payCommissionToMm(event, commission);
             buyerPos.addCommission(commission);
         }
@@ -570,13 +728,13 @@ public class GuessMarketEngine implements IGuessMarketEngine {
         double commWait = r2(calculateCommissionAmount(event, payWaiting, "on-purchase"));
         if (commIn > 0) {
             incomingUser.requireFunds(commIn);
-            incomingUser.debit(commIn);
+            incomingUser.debit(commIn, "Mint commission");
             payCommissionToMm(event, commIn);
             inPos.addCommission(commIn);
         }
         if (commWait > 0) {
             waitUser.requireFunds(commWait);
-            waitUser.debit(commWait);
+            waitUser.debit(commWait, "Mint commission");
             payCommissionToMm(event, commWait);
             waitPos.addCommission(commWait);
         }
@@ -626,7 +784,7 @@ public class GuessMarketEngine implements IGuessMarketEngine {
         }
         event.getAccount().recordCommissionOnly(commission);
         if (hasUsers()) {
-            findMarketMaker(event).credit(commission);
+            findMarketMaker(event).credit(commission, "Commission received");
         } else {
             event.getAccount().addInvestment(commission);
         }
@@ -889,7 +1047,8 @@ public class GuessMarketEngine implements IGuessMarketEngine {
                 user.getDisplayedCash(),
                 user.isBlocked(),
                 new ArrayList<>(user.getMmEventIds()),
-                parts
+                parts,
+                new ArrayList<>(user.getLedger())
         );
     }
 

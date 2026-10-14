@@ -1,7 +1,9 @@
 package models;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -12,6 +14,7 @@ public class User {
     private boolean blocked;
     private final Set<Integer> mmEventIds = new HashSet<>();
     private final Map<Integer, UserPosition> positions = new HashMap<>();
+    private final List<String> ledger = new ArrayList<>();
 
     public User(String name, double cash) {
         this.name = name;
@@ -46,8 +49,20 @@ public class User {
         return mmEventIds;
     }
 
+    public boolean isMarketMaker() {
+        return !mmEventIds.isEmpty();
+    }
+
     public boolean isMarketMakerOf(int eventId) {
         return mmEventIds.contains(eventId);
+    }
+
+    public List<String> getLedger() {
+        return ledger;
+    }
+
+    private void addLedger(String reason, double signedAmount) {
+        ledger.add(0, String.format("%s: %+.2f (available %.2f)", reason, signedAmount, cash));
     }
 
     public Map<Integer, UserPosition> getPositions() {
@@ -69,6 +84,10 @@ public class User {
     }
 
     public void debit(double amount) {
+        debit(amount, "Debit");
+    }
+
+    public void debit(double amount, String reason) {
         if (amount <= 0) {
             return;
         }
@@ -76,9 +95,14 @@ public class User {
         if (cash < 0) {
             blocked = true;
         }
+        addLedger(reason, -amount);
     }
 
     public void credit(double amount) {
+        credit(amount, "Credit");
+    }
+
+    public void credit(double amount, String reason) {
         if (amount <= 0) {
             return;
         }
@@ -86,6 +110,7 @@ public class User {
         if (cash < 0) {
             blocked = true;
         }
+        addLedger(reason, amount);
     }
 
     public void requireFunds(double amount) {
@@ -101,6 +126,7 @@ public class User {
         requireFunds(amount);
         cash -= amount;
         reservedCash += amount;
+        addLedger("Reserved for order", -amount);
     }
 
     public void releaseCash(double amount) {
@@ -110,6 +136,7 @@ public class User {
         double release = Math.min(amount, reservedCash);
         reservedCash -= release;
         cash += release;
+        addLedger("Order cash released", release);
     }
 
     public void consumeReserved(double amount) {
@@ -117,6 +144,7 @@ public class User {
             return;
         }
         reservedCash -= amount;
+        addLedger("Paid from reserved cash", -amount);
         if (reservedCash < 0) {
             cash += reservedCash;
             reservedCash = 0;

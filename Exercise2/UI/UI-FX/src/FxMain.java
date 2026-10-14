@@ -8,10 +8,10 @@ public class FxMain extends Application {
 
     @Override
     public void start(Stage primaryStage) throws Exception {
-        FXMLLoader loader = new FXMLLoader(getClass().getResource("MainLayout.fxml"));
+        FXMLLoader loader = new FXMLLoader(getClass().getResource("LoginLayout.fxml"));
         Parent root = loader.load();
         primaryStage.setTitle("Guess Market");
-        primaryStage.setScene(new Scene(root, 1100, 700));
+        primaryStage.setScene(new Scene(root, 360, 220));
         primaryStage.show();
     }
 

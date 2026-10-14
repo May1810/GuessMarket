@@ -1,3 +1,4 @@
+import com.google.gson.Gson;
 import dto.BuyResultDTO;
 import dto.EventDTO;
 import dto.OptionDTO;
@@ -5,6 +6,8 @@ import dto.OrderDTO;
 import dto.ParticipantDTO;
 import dto.UserDTO;
 import dto.UserEventDTO;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.concurrent.Task;
 import javafx.event.ActionEvent;
@@ -21,15 +24,28 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.stage.FileChooser;
+import javafx.util.Duration;
 import javafx.util.StringConverter;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class MainController {
 
     private final IGuessMarketEngine engine = new GuessMarketEngine();
+    private Timeline refreshTimeline;
+    private boolean eventsRequestRunning;
+    private boolean usersRequestRunning;
 
     @FXML private Button loadButton;
     @FXML private ProgressBar loadProgress;
@@ -59,7 +75,11 @@ public class MainController {
     @FXML private TableView<UserDTO> usersTable;
     @FXML private TableColumn<UserDTO, String> userNameColumn;
     @FXML private TableColumn<UserDTO, String> userCashColumn;
+    @FXML private TableColumn<UserDTO, String> userMmColumn;
     @FXML private TableColumn<UserDTO, String> userBlockedColumn;
+    @FXML private Label myCashLabel;
+    @FXML private TextField topupField;
+    @FXML private TextArea ledgerArea;
     @FXML private Label userDetailsLabel;
     @FXML private TableView<UserEventDTO> userEventsTable;
     @FXML private TableColumn<UserEventDTO, Integer> userEventIdColumn;
@@ -88,19 +108,21 @@ public class MainController {
 
         eventsTable.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, selected) -> {
             if (selected != null) {
-                showEventDetails(engine.getEventById(selected.getId()));
+                showEventDetails(selected);
             }
         });
 
         userNameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
         userCashColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(
                 String.format("%.2f", cell.getValue().getCash())));
+        userMmColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(
+                cell.getValue().isMarketMaker() ? "Yes" : "No"));
         userBlockedColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(
                 cell.getValue().isBlocked() ? "Yes" : "No"));
 
         usersTable.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, selected) -> {
             if (selected != null) {
-                showUserDetails(engine.getUserByName(selected.getName()));
+                showUserDetails(selected);
             }
         });
 
@@ -139,6 +161,108 @@ public class MainController {
         applyEventFilter();
     }
 
+    public void startAutoRefresh() {
+        if (refreshTimeline != null) {
+            return;
+        }
+        refreshTimeline = new Timeline(new KeyFrame(Duration.seconds(1), e -> {
+            loadEventsFromServer(false);
+            loadUsersFromServer(false);
+        }));
+        refreshTimeline.setCycleCount(Timeline.INDEFINITE);
+        refreshTimeline.play();
+    }
+
+    public void stopAutoRefresh() {
+        if (refreshTimeline != null) {
+            refreshTimeline.stop();
+        }
+    }
+
+    public void loadEventsFromServer() {
+        loadEventsFromServer(true);
+    }
+
+    private void loadEventsFromServer(boolean showErrors) {
+        if (eventsRequestRunning) {
+            return;
+        }
+        eventsRequestRunning = true;
+        Integer selectedTableId = eventsTable.getSelectionModel().getSelectedItem() == null
+                ? null : eventsTable.getSelectionModel().getSelectedItem().getId();
+        Integer selectedComboId = tradeEventCombo.getValue() == null
+                ? null : tradeEventCombo.getValue().getId();
+        String selectedOption = optionCombo.getValue();
+        String selectedWinner = winnerCombo.getValue();
+
+        Task<List<EventDTO>> task = new Task<>() {
+            @Override
+            protected List<EventDTO> call() throws Exception {
+                // בונים את בקשת הרשת לכתובת של השרת
+                // * הערה: תוודאי ש-ServerConfig.BASE באמת קיים אצלך, או שתחליפי בכתובת המלאה
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(ServerConfig.BASE + "/events"))
+                        .GET()
+                        .build();
+
+                // שולחים את הבקשה
+                HttpResponse<String> response = HttpClient.newHttpClient()
+                        .send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() != 200) {
+                    throw new IllegalStateException(response.body());
+                }
+
+                // מתרגמים את ה-JSON שחזר למערך של EventDTO
+                EventDTO[] events = new Gson().fromJson(response.body(), EventDTO[].class);
+                return events == null ? List.of() : List.of(events);
+            }
+        };
+
+        // ברגע שהמשימה הצליחה - מעדכנים את הטבלה (זה רץ בטוח על ה-JavaFX Thread)
+        // * הערה: תוודאי שלטבלה שלך קוראים eventsTable, אחרת תשני לשם שלה
+        task.setOnSucceeded(e -> {
+            eventsRequestRunning = false;
+            List<EventDTO> events = task.getValue();
+            eventsTable.getItems().setAll(events);
+            tradeEventCombo.getItems().setAll(events);
+            if (selectedTableId != null) {
+                for (EventDTO row : events) {
+                    if (row.getId() == selectedTableId) {
+                        eventsTable.getSelectionModel().select(row);
+                        break;
+                    }
+                }
+            }
+            if (selectedComboId != null) {
+                for (EventDTO row : events) {
+                    if (row.getId() == selectedComboId) {
+                        tradeEventCombo.getSelectionModel().select(row);
+                        break;
+                    }
+                }
+                if (selectedOption != null && optionCombo.getItems().contains(selectedOption)) {
+                    optionCombo.getSelectionModel().select(selectedOption);
+                }
+                if (selectedWinner != null && winnerCombo.getItems().contains(selectedWinner)) {
+                    winnerCombo.getSelectionModel().select(selectedWinner);
+                }
+            }
+        });
+
+        task.setOnFailed(e -> {
+            eventsRequestRunning = false;
+            if (showErrors) {
+                showError("Events Error", task.getException().getMessage());
+            }
+        });
+
+        // מריצים את הכל בשרשור (Thread) נפרד כדי לא להקפיא את המסך
+        Thread thread = new Thread(task);
+        thread.setDaemon(true);
+        thread.start();
+    }
+
     @FXML
     private void onLoadClick(ActionEvent actionEvent) {
         FileChooser chooser = new FileChooser();
@@ -155,21 +279,57 @@ public class MainController {
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() throws Exception {
-                Thread.sleep(1500);
-                engine.loadXmlFile(file.getAbsolutePath());
+                byte[] fileBytes = Files.readAllBytes(file.toPath());
+                String boundary = "----GuessMarket" + System.currentTimeMillis();
+
+                // **כאן לעדכן:** תשני למשתנה שבו את שומרת את שם המשתמש שהתחבר!
+                String user = Session.userName;
+
+                ByteArrayOutputStream body = new ByteArrayOutputStream();
+                String header = "--" + boundary + "\r\n"
+                        + "Content-Disposition: form-data; name=\"username\"\r\n\r\n"
+                        + user + "\r\n"
+                        + "--" + boundary + "\r\n"
+                        + "Content-Disposition: form-data; name=\"file\"; filename=\"" + file.getName() + "\"\r\n"
+                        + "Content-Type: application/xml\r\n\r\n";
+
+                body.write(header.getBytes(StandardCharsets.UTF_8));
+                body.write(fileBytes);
+                body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(ServerConfig.BASE + "/upload"))
+                        .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                        .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
+                        .build();
+
+                HttpResponse<String> response = HttpClient.newHttpClient()
+                        .send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() != 200) {
+                    Map<String, Object> responseMap = new Gson().fromJson(response.body(), Map.class);
+                    String errorMsg = responseMap.containsKey("message") ? (String) responseMap.get("message") : "Upload failed";
+                    throw new IllegalStateException(errorMsg);
+                }
                 return null;
             }
         };
+
         task.setOnSucceeded(e -> {
             loadedPathLabel.setText(file.getAbsolutePath());
             tradeResultLabel.setText("");
-            refreshAll(null, null);
-            finishLoadUi();
+
+            // כאן הקסם: במקום refreshAll ישן, אנחנו מושכים את הנתונים העדכניים מהשרת!
+            loadEventsFromServer();
+
+            finishLoadUi(); // מחזיר את הכפתור והפרוגרס למצב רגיל
         });
+
         task.setOnFailed(e -> {
             finishLoadUi();
             showError("Could not load file", task.getException().getMessage());
         });
+
         Thread thread = new Thread(task);
         thread.setDaemon(true);
         thread.start();
@@ -177,50 +337,39 @@ public class MainController {
 
     @FXML
     private void onOpenClick(ActionEvent event) {
-        UserDTO user = selectedUser();
         EventDTO selected = tradeEventCombo.getValue();
-        if (user == null || selected == null) {
-            showError("Open event", "Select a user and an event.");
+        if (selected == null || Session.userName == null) {
+            showError("Open event", "Select an event.");
             return;
         }
-        try {
-            engine.openEvent(user.getName(), selected.getId());
-            tradeResultLabel.setText("Event opened.");
-            refreshAll(user.getName(), selected.getId());
-        } catch (Exception e) {
-            showError("Open failed", e.getMessage());
-        }
+        String body = "username=" + enc(Session.userName) + "&eventId=" + selected.getId();
+        postForm("/open", body, "Event opened.");
     }
 
     @FXML
     private void onCloseClick(ActionEvent event) {
-        UserDTO user = selectedUser();
         EventDTO selected = tradeEventCombo.getValue();
         String winner = winnerCombo.getValue();
-        if (user == null || selected == null) {
-            showError("Close event", "Select a user and an event.");
+        if (selected == null || Session.userName == null) {
+            showError("Close event", "Select an event.");
             return;
         }
         if (winner == null || winner.isBlank()) {
             showError("Close event", "Select the winning option.");
             return;
         }
-        try {
-            engine.closeEvent(user.getName(), selected.getId(), winner);
-            tradeResultLabel.setText("Event closed. Winner: " + winner);
-            refreshAll(user.getName(), selected.getId());
-        } catch (Exception e) {
-            showError("Close failed", e.getMessage());
-        }
+        String body = "username=" + enc(Session.userName)
+                + "&eventId=" + selected.getId()
+                + "&winningOption=" + enc(winner);
+        postForm("/close", body, "Event closed.");
     }
 
     @FXML
     private void onBuyClick(ActionEvent event) {
-        UserDTO user = selectedUser();
         EventDTO selected = tradeEventCombo.getValue();
         String optionName = optionCombo.getValue();
-        if (user == null || selected == null) {
-            showError("Buy", "Select a user and an event.");
+        if (selected == null || Session.userName == null) {
+            showError("Buy", "Select an event.");
             return;
         }
         if (optionName == null || optionName.isBlank()) {
@@ -234,32 +383,70 @@ public class MainController {
             showError("Buy", "Amount must be a whole number.");
             return;
         }
-        try {
-            BuyResultDTO receipt = engine.buyShares(user.getName(), selected.getId(), optionName, amount);
-            tradeResultLabel.setText(String.format(
-                    "Paid total %.2f (shares %.2f + commission %.2f)",
-                    receipt.getTotalPaid(), receipt.getBasePrice(), receipt.getCommission()));
-            if (receipt.getMessage() != null) {
-                showError("Notice", receipt.getMessage());
+        String body = "username=" + enc(Session.userName)
+                + "&eventId=" + selected.getId()
+                + "&optionName=" + enc(optionName)
+                + "&amount=" + amount;
+        postForm("/buy", body, "Buy completed.");
+    }
+
+    private void postForm(String path, String formBody, String successText) {
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(ServerConfig.BASE + path))
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(HttpRequest.BodyPublishers.ofString(formBody))
+                        .build();
+                HttpResponse<String> response = HttpClient.newHttpClient()
+                        .send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() != 200) {
+                    throw new IllegalStateException(messageFrom(response.body()));
+                }
+                return null;
             }
-            refreshAll(user.getName(), selected.getId());
-        } catch (Exception e) {
-            showError("Buy failed", e.getMessage());
+        };
+        task.setOnSucceeded(e -> {
+            tradeResultLabel.setText(successText);
+            loadEventsFromServer();
+        });
+        task.setOnFailed(e -> showError("Action failed", task.getException().getMessage()));
+        Thread thread = new Thread(task);
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private String messageFrom(String json) {
+        String key = "\"message\":\"";
+        int start = json.indexOf(key);
+        if (start < 0) {
+            return json;
         }
+        start += key.length();
+        int end = json.indexOf('"', start);
+        return end < 0 ? json : json.substring(start, end);
+    }
+
+    private String enc(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     @FXML
     private void onPlaceOrderClick(ActionEvent event) {
-        UserDTO user = selectedUser();
         EventDTO selected = tradeEventCombo.getValue();
         String optionName = optionCombo.getValue();
         String side = sideCombo.getValue();
-        if (user == null || selected == null) {
-            showError("Order", "Select a user and an event.");
+        if (selected == null || Session.userName == null) {
+            showError("Order", "Select an event.");
             return;
         }
         if (optionName == null || optionName.isBlank()) {
             showError("Order", "Select an option.");
+            return;
+        }
+        if (side == null || side.isBlank()) {
+            showError("Order", "Select Buy or Sell.");
             return;
         }
         int qty;
@@ -271,16 +458,13 @@ public class MainController {
             showError("Order", "Quantity must be a whole number and price must be numeric.");
             return;
         }
-        try {
-            BuyResultDTO result = engine.placeOrder(user.getName(), selected.getId(), optionName, side, qty, price);
-            tradeResultLabel.setText(result.getMessage() == null ? "Order processed." : result.getMessage());
-            if (result.getMessage() != null && result.getMessage().contains("blocked")) {
-                showError("Notice", result.getMessage());
-            }
-            refreshAll(user.getName(), selected.getId());
-        } catch (Exception e) {
-            showError("Order failed", e.getMessage());
-        }
+        String body = "username=" + enc(Session.userName)
+                + "&eventId=" + selected.getId()
+                + "&optionName=" + enc(optionName)
+                + "&side=" + enc(side)
+                + "&quantity=" + qty
+                + "&price=" + price;
+        postForm("/order", body, "Order processed.");
     }
 
     private void finishLoadUi() {
@@ -476,6 +660,104 @@ public class MainController {
         } else {
             userEventDetailsLabel.setText("This user has not participated in an event yet.");
         }
+    }
+
+    public void loadUsersFromServer() {
+        loadUsersFromServer(true);
+    }
+
+    private void loadUsersFromServer(boolean showErrors) {
+        if (usersRequestRunning) {
+            return;
+        }
+        usersRequestRunning = true;
+        String selectedName = usersTable.getSelectionModel().getSelectedItem() == null
+                ? null : usersTable.getSelectionModel().getSelectedItem().getName();
+        Task<List<UserDTO>> task = new Task<>() {
+            @Override
+            protected List<UserDTO> call() throws Exception {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(ServerConfig.BASE + "/users"))
+                        .GET()
+                        .build();
+                HttpResponse<String> response = HttpClient.newHttpClient()
+                        .send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() != 200) {
+                    throw new IllegalStateException(response.body());
+                }
+                UserDTO[] users = new Gson().fromJson(response.body(), UserDTO[].class);
+                return users == null ? List.of() : List.of(users);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            usersRequestRunning = false;
+            List<UserDTO> users = task.getValue();
+            usersTable.getItems().setAll(users);
+            UserDTO me = null;
+            for (UserDTO user : users) {
+                if (Session.userName != null && user.getName().equalsIgnoreCase(Session.userName)) {
+                    me = user;
+                }
+                if (selectedName != null && user.getName().equalsIgnoreCase(selectedName)) {
+                    usersTable.getSelectionModel().select(user);
+                }
+            }
+            if (me != null) {
+                myCashLabel.setText(String.format("You: %s    Cash: %.2f%s",
+                        me.getName(), me.getCash(), me.isBlocked() ? "    BLOCKED" : ""));
+                if (me.getLedger() == null || me.getLedger().isEmpty()) {
+                    ledgerArea.setText("No account lines yet.");
+                } else {
+                    ledgerArea.setText(String.join("\n", me.getLedger()));
+                }
+            }
+        });
+        task.setOnFailed(e -> {
+            usersRequestRunning = false;
+            if (showErrors) {
+                showError("Users", task.getException().getMessage());
+            }
+        });
+        Thread thread = new Thread(task);
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    @FXML
+    private void onTopupClick(ActionEvent event) {
+        if (Session.userName == null) {
+            showError("Top up", "Login first.");
+            return;
+        }
+        double amount;
+        try {
+            amount = Double.parseDouble(topupField.getText().trim());
+        } catch (Exception e) {
+            showError("Top up", "Amount must be a number.");
+            return;
+        }
+        String body = "username=" + enc(Session.userName) + "&amount=" + amount;
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(ServerConfig.BASE + "/topup"))
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(HttpRequest.BodyPublishers.ofString(body))
+                        .build();
+                HttpResponse<String> response = HttpClient.newHttpClient()
+                        .send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() != 200) {
+                    throw new IllegalStateException(messageFrom(response.body()));
+                }
+                return null;
+            }
+        };
+        task.setOnSucceeded(e -> loadUsersFromServer());
+        task.setOnFailed(e -> showError("Top up failed", task.getException().getMessage()));
+        Thread thread = new Thread(task);
+        thread.setDaemon(true);
+        thread.start();
     }
 
     private void showError(String header, String message) {
